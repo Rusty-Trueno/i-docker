@@ -3,6 +3,8 @@ package main
 import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
+	"i-docker/cgroups/subsystems"
 	"i-docker/container"
 	"i-docker/run"
 	"os"
@@ -13,8 +15,11 @@ const usage = `mydocker is a simple container runtime implementation.
 			   Enjoy it, just for fun.`
 
 var (
-	tty     bool
-	rootCmd = &cobra.Command{
+	tty      bool
+	m        string
+	cpushare string
+	cpuset   string
+	rootCmd  = &cobra.Command{
 		Use:  "i-docker",
 		Long: usage,
 	}
@@ -29,24 +34,28 @@ func main() {
 }
 
 func init() {
+	pflag.BoolVar(&tty, "ti", false, "enable tty")
+	pflag.StringVar(&m, "m", "", "memory limit")
+	pflag.StringVar(&cpushare, "cpushare", "", "cpushare limit")
+	pflag.StringVar(&cpuset, "cpuset", "", "cpuset limit")
 	rootCmd.AddCommand(newInitCommand())
 	rootCmd.AddCommand(newRunCommand())
+	rootCmd.DisableSuggestions = true
 }
 
 func newInitCommand() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:  "init",
 		Long: "Init container process run user's process in container. Do not call it outside",
 		Run: func(cmd *cobra.Command, args []string) {
 			logrus.Infof("init come on")
-			command := args[0]
-			logrus.Infof("command %s", command)
-			err := container.RunContainerInitProcess(command, nil)
+			err := container.RunContainerInitProcess()
 			if err != nil {
 				logrus.Errorf("failed to run container init process, error is %v", err)
 			}
 		},
 	}
+	return cmd
 }
 
 func newRunCommand() *cobra.Command {
@@ -56,12 +65,21 @@ func newRunCommand() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			if len(args) < 1 {
 				logrus.Errorf("Missing container command")
+				return
 			}
-			command := args[0]
-			logrus.Infof("cmd is %v, tty is %v\n", command, tty)
-			run.Run(tty, command)
+			var cmdArray []string
+			for _, arg := range args {
+				cmdArray = append(cmdArray, arg)
+			}
+			tty := tty
+			resConf := &subsystems.ResourceConfig{
+				MemoryLimit: m,
+				CpuSet:      cpuset,
+				CpuShare:    cpushare,
+			}
+
+			run.Run(tty, cmdArray, resConf)
 		},
 	}
-	cmd.Flags().BoolVar(&tty, "tty", false, "enable tty")
 	return cmd
 }
